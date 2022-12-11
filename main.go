@@ -9,17 +9,17 @@ type user struct {
 	id    int
 	name  string
 	timer *time.Timer
+	stop  chan struct{}
 }
+type users map[int]*user
 
-// user list
-var users map[int]*user
+var us users
 
-var names = []string{
-	"hoge",
-	"piyo",
-	"fuga",
-	"var",
-	"lib",
+const userNum = 10
+const userPrefix = "user"
+
+func init() {
+	us = make(users, userNum)
 }
 
 func main() {
@@ -27,38 +27,60 @@ func main() {
 		fmt.Println(err)
 	}
 	fmt.Scanln()
-
-	fmt.Printf("%+#v", users)
 }
 
 func run() error {
-	users = make(map[int]*user, 5)
-	for i := 0; i < 5; i++ {
-		go add(i)
+	for i := 0; i < userNum; i++ {
+		newUser(i + 1)
 		// wait
 		time.Sleep(1 * time.Second)
 	}
-	return nil
-}
 
-func add(n int) {
-	t := time.NewTimer(5 * time.Second)
-	users[n] = &user{
-		id:    n,
-		name:  names[n],
-		timer: t,
+	time.Sleep(userNum / 2 * time.Second)
+
+	//　stop remaining timers
+	for _, u := range us {
+		if u.timer.Stop() {
+			fmt.Println("forced stop")
+			// trigger on cleaning
+			u.stop <- struct{}{}
+		} else {
+			<-u.timer.C
+			fmt.Println("already stopped")
+		}
 	}
-	fmt.Printf("[add]id: %d\n", n)
-
-	// timer wait
-	<-users[n].timer.C
-
-	fmt.Println("stop")
-	clean(n)
+	return nil
 }
 
-func clean(n int) error {
-	fmt.Printf("[delete]id: %d, name: %s\n", n, users[n].name)
-	delete(users, n)
-	return nil
+func newUser(id int) {
+	name := userPrefix + fmt.Sprintf("%02d", id)
+	t := time.NewTimer(userNum * time.Second)
+	u := &user{
+		id:    id,
+		name:  name,
+		timer: t,
+		stop:  make(chan struct{}),
+	}
+	// regist new user
+	us[id] = u
+	fmt.Printf("[add]id: %d\n", id)
+
+	// timer's wait
+	go u.wait()
+}
+
+func (u *user) wait() {
+	select {
+	case <-u.timer.C:
+	case <-u.stop:
+		fmt.Println("received stop signal")
+	}
+
+	u.clean()
+	fmt.Println("goroutine complete")
+}
+
+func (u *user) clean() {
+	fmt.Printf("[delete]id: %d, name: %s\n", u.id, u.name)
+	delete(us, u.id)
 }
