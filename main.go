@@ -9,6 +9,7 @@ type user struct {
 	id    int
 	name  string
 	timer *time.Timer
+	stop  chan struct{}
 }
 
 // user list
@@ -34,9 +35,24 @@ func main() {
 func run() error {
 	users = make(map[int]*user, 5)
 	for i := 0; i < 5; i++ {
-		go add(i)
+		add(i)
+		go wait(i)
+
 		// wait
 		time.Sleep(1 * time.Second)
+	}
+
+	time.Sleep(2 * time.Second)
+
+	for _, u := range users {
+		if u.timer.Stop() {
+			fmt.Println("forced stop")
+			// trigger to cleaning
+			u.stop <- struct{}{}
+		} else {
+			<-u.timer.C
+			fmt.Println("already stopped")
+		}
 	}
 	return nil
 }
@@ -47,14 +63,20 @@ func add(n int) {
 		id:    n,
 		name:  names[n],
 		timer: t,
+		stop:  make(chan struct{}),
 	}
 	fmt.Printf("[add]id: %d\n", n)
+}
 
-	// timer wait
-	<-users[n].timer.C
+func wait(n int) {
+	select {
+	case <-users[n].timer.C:
+	case <-users[n].stop:
+		fmt.Println("received stop signal")
+	}
 
-	fmt.Println("stop")
-	clean(n)
+	clean(users[n].id)
+	fmt.Println("fin")
 }
 
 func clean(n int) error {
