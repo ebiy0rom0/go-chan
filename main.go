@@ -40,14 +40,7 @@ func run() error {
 
 	//　stop remaining timers
 	for _, u := range us {
-		if u.timer.Stop() {
-			fmt.Println("forced stop")
-			// trigger on cleaning
-			u.stop <- struct{}{}
-		} else {
-			<-u.timer.C
-			fmt.Println("already stopped")
-		}
+		us.stop(u.id)
 	}
 	return nil
 }
@@ -83,4 +76,20 @@ func (u *user) wait() {
 func (u *user) clean() {
 	fmt.Printf("[delete]id: %d, name: %s\n", u.id, u.name)
 	delete(us, u.id)
+}
+
+func (u users) stop(id int) {
+	user, ok := u[id]
+	if !ok {
+		fmt.Println("")
+	}
+
+	if user.timer.Stop() {
+		fmt.Println("forced stop")
+		// trigger on cleaning
+		user.stop <- struct{}{}
+	} else {
+		<-user.timer.C
+		fmt.Println("already stopped")
+	}
 }
